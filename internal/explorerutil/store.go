@@ -26,6 +26,14 @@ func decode(obj types.DecoderFrom, data []byte) error {
 	return d.Err()
 }
 
+func scan(rows *sql.Rows, d types.DecoderFrom) error {
+	var data []byte
+	if err := rows.Scan(&data); err != nil {
+		return err
+	}
+	return decode(d, data)
+}
+
 // SQLiteStore implements explorer.Store using a SQLite database.
 type SQLiteStore struct {
 	db    *sql.DB
@@ -121,12 +129,8 @@ func (s *SQLiteStore) UnspentSiacoinElements(address types.Address) ([]types.Ele
 
 	var ids []types.ElementID
 	for rows.Next() {
-		var data []byte
-		if err := rows.Scan(&data); err != nil {
-			return nil, err
-		}
 		var id types.ElementID
-		if err := decode(&id, data); err != nil {
+		if err := scan(rows, &id); err != nil {
 			return nil, err
 		}
 		ids = append(ids, id)
@@ -144,12 +148,8 @@ func (s *SQLiteStore) UnspentSiafundElements(address types.Address) ([]types.Ele
 
 	var ids []types.ElementID
 	for rows.Next() {
-		var data []byte
-		if err := rows.Scan(&data); err != nil {
-			return nil, err
-		}
 		var id types.ElementID
-		if err := decode(&id, data); err != nil {
+		if err := scan(rows, &id); err != nil {
 			return nil, err
 		}
 		ids = append(ids, id)
@@ -173,12 +173,8 @@ func (s *SQLiteStore) Transactions(address types.Address, amount, offset int) ([
 
 	var ids []types.TransactionID
 	for rows.Next() {
-		var data []byte
-		if err := rows.Scan(&data); err != nil {
-			return nil, err
-		}
 		var id types.TransactionID
-		if err := decode(&id, data); err != nil {
+		if err := scan(rows, &id); err != nil {
 			return nil, err
 		}
 		ids = append(ids, id)
