@@ -6,10 +6,10 @@ import (
 	"database/sql"
 	"strings"
 
+	_ "github.com/mattn/go-sqlite3"
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
 	"go.sia.tech/explorer"
-	_ "modernc.org/sqlite"
 )
 
 func encode(obj types.EncoderTo) []byte {
@@ -291,7 +291,7 @@ CREATE TABLE addressTransactions (
 
 // NewStore creates a new SQLiteStore for storing explorer data.
 func NewStore(path string) (*SQLiteStore, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, err
 	} else if err := createTables(db); err != nil {
