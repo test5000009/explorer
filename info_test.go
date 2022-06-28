@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"go.sia.tech/core/chain"
+	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
 	"go.sia.tech/explorer"
 	"go.sia.tech/explorer/internal/chainutil"
@@ -21,13 +22,27 @@ func testingKeypair(seed uint64) (types.PublicKey, types.PrivateKey) {
 	return privkey.PublicKey(), privkey
 }
 
+func addGenesisElements(e *explorer.Explorer, block types.Block) error {
+	return e.ProcessChainApplyUpdate(&chain.ApplyUpdate{
+		ApplyUpdate: consensus.GenesisUpdate(block, types.Work{NumHashes: [32]byte{31: 4}}),
+		Block:       block,
+	}, true)
+}
+
 func TestSiacoinElements(t *testing.T) {
 	sim := chainutil.NewChainSim()
 	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.State)
 
+	hs, err := explorerutil.NewHashStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	explorerStore := explorerutil.NewEphemeralStore()
-	e := explorer.NewExplorer(sim.Genesis.State, explorerStore)
+	e := explorer.NewExplorer(sim.Genesis.State, explorerStore, hs)
 	cm.AddSubscriber(e, cm.Tip())
+	if err := addGenesisElements(e, sim.Genesis.Block); err != nil {
+		t.Fatal(err)
+	}
 
 	w := walletutil.NewTestingWallet(cm.TipState())
 	cm.AddSubscriber(w, cm.Tip())
@@ -77,6 +92,7 @@ func TestSiacoinElements(t *testing.T) {
 		if len(outputs) != 1 {
 			t.Fatal("wrong amount of outputs")
 		}
+
 		elem, err := e.SiacoinElement(outputs[0])
 		if err != nil {
 			t.Fatal(err)
@@ -84,6 +100,15 @@ func TestSiacoinElements(t *testing.T) {
 		if !w.Balance().Equals(elem.Value) {
 			t.Fatal("output value doesn't equal balance")
 		}
+
+		proof, err := e.MerkleProof(elem.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(proof, elem.MerkleProof) {
+			t.Fatalf("merkle proofs did not equal: got %v, expected %v", proof, elem.MerkleProof)
+		}
+
 		txns, err := e.Transactions(changeAddr, math.MaxInt64, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -108,9 +133,16 @@ func TestChainStatsSiacoins(t *testing.T) {
 	sim := chainutil.NewChainSim()
 	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.State)
 
+	hs, err := explorerutil.NewHashStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	explorerStore := explorerutil.NewEphemeralStore()
-	e := explorer.NewExplorer(sim.Genesis.State, explorerStore)
+	e := explorer.NewExplorer(sim.Genesis.State, explorerStore, hs)
 	cm.AddSubscriber(e, cm.Tip())
+	if err := addGenesisElements(e, sim.Genesis.Block); err != nil {
+		t.Fatal(err)
+	}
 
 	w := walletutil.NewTestingWallet(cm.TipState())
 	cm.AddSubscriber(w, cm.Tip())
@@ -136,10 +168,10 @@ func TestChainStatsSiacoins(t *testing.T) {
 
 		SpentSiacoinsCount:  0,
 		SpentSiafundsCount:  0,
-		ActiveContractCost:  types.ZeroCurrency,
-		ActiveContractCount: 0,
+		ActiveContractCost:  types.Siacoins(825),
+		ActiveContractCount: 10,
 		ActiveContractSize:  0,
-		TotalContractCost:   types.ZeroCurrency,
+		TotalContractCost:   types.Siacoins(825),
 		TotalContractSize:   0,
 		TotalRevisionVolume: 0,
 	}
@@ -173,10 +205,10 @@ func TestChainStatsSiacoins(t *testing.T) {
 
 			SpentSiacoinsCount:  1,
 			SpentSiafundsCount:  0,
-			ActiveContractCost:  types.ZeroCurrency,
-			ActiveContractCount: 0,
+			ActiveContractCost:  types.Siacoins(825),
+			ActiveContractCount: 10,
 			ActiveContractSize:  0,
-			TotalContractCost:   types.ZeroCurrency,
+			TotalContractCost:   types.Siacoins(825),
 			TotalContractSize:   0,
 			TotalRevisionVolume: 0,
 		}
@@ -190,9 +222,16 @@ func TestChainStatsContracts(t *testing.T) {
 	sim := chainutil.NewChainSim()
 	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.State)
 
+	hs, err := explorerutil.NewHashStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	explorerStore := explorerutil.NewEphemeralStore()
-	e := explorer.NewExplorer(sim.Genesis.State, explorerStore)
+	e := explorer.NewExplorer(sim.Genesis.State, explorerStore, hs)
 	cm.AddSubscriber(e, cm.Tip())
+	if err := addGenesisElements(e, sim.Genesis.Block); err != nil {
+		t.Fatal(err)
+	}
 
 	w := walletutil.NewTestingWallet(cm.TipState())
 	cm.AddSubscriber(w, cm.Tip())
@@ -273,10 +312,10 @@ func TestChainStatsContracts(t *testing.T) {
 
 		SpentSiacoinsCount:  2,
 		SpentSiafundsCount:  0,
-		ActiveContractCost:  types.Siacoins(77),
-		ActiveContractCount: 1,
+		ActiveContractCost:  types.Siacoins(825).Add(types.Siacoins(77)),
+		ActiveContractCount: 10 + 1,
 		ActiveContractSize:  0,
-		TotalContractCost:   types.Siacoins(77),
+		TotalContractCost:   types.Siacoins(825).Add(types.Siacoins(77)),
 		TotalContractSize:   0,
 		TotalRevisionVolume: 0,
 	}

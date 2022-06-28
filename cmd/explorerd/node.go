@@ -60,7 +60,15 @@ func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := explorer.NewExplorer(tip.State, store)
+	hashesDir := filepath.Join(dir, "hashes")
+	if err := os.MkdirAll(hashesDir, 0700); err != nil {
+		return nil, err
+	}
+	hs, err := explorerutil.NewHashStore(hashesDir)
+	if err != nil {
+		return nil, err
+	}
+	e := explorer.NewExplorer(tip.State, store, hs)
 	cm.AddSubscriber(e, tip.State.Index)
 
 	p2pDir := filepath.Join(dir, "p2p")

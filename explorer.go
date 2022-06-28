@@ -36,6 +36,13 @@ type Store interface {
 	Commit() error
 }
 
+// A HashStore can read and write hashes for nodes in the log's tree structure.
+type HashStore interface {
+	Commit() error
+	ModifyLeaf(elem types.StateElement) error
+	MerkleProof(leafIndex uint64) ([]types.Hash256, error)
+}
+
 // An Explorer contains a database storing information about blocks, outputs,
 // contracts.
 type Explorer struct {
@@ -43,6 +50,7 @@ type Explorer struct {
 	mu       sync.Mutex
 	tipStats ChainStats
 	cs       consensus.State
+	hs       HashStore
 }
 
 // ProcessChainApplyUpdate implements chain.Subscriber.
@@ -77,7 +85,7 @@ func (e *Explorer) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayCommit boo
 		for _, elem := range txn.SiafundOutputs {
 			addrMap[elem.Address] = struct{}{}
 		}
-		var addrs []types.Address
+		addrs := make([]types.Address, 0, len(addrMap))
 		for addr := range addrMap {
 			addrs = append(addrs, addr)
 		}
@@ -88,11 +96,13 @@ func (e *Explorer) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayCommit boo
 		e.db.RemoveElement(elem.ID)
 		e.db.RemoveUnspentSiacoinElement(elem.Address, elem.ID)
 		stats.SpentSiacoinsCount++
+		e.hs.ModifyLeaf(elem.StateElement)
 	}
 	for _, elem := range cau.SpentSiafunds {
 		e.db.RemoveElement(elem.ID)
 		e.db.RemoveUnspentSiafundElement(elem.Address, elem.ID)
 		stats.SpentSiafundsCount++
+		e.hs.ModifyLeaf(elem.StateElement)
 	}
 	for _, elem := range cau.ResolvedFileContracts {
 		e.db.RemoveElement(elem.ID)
@@ -100,20 +110,24 @@ func (e *Explorer) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayCommit boo
 		payout := elem.FileContract.RenterOutput.Value.Add(elem.FileContract.HostOutput.Value)
 		stats.ActiveContractCost = stats.ActiveContractCost.Sub(payout)
 		stats.ActiveContractSize -= elem.FileContract.Filesize
+		e.hs.ModifyLeaf(elem.StateElement)
 	}
 
 	for _, elem := range cau.NewSiacoinElements {
 		e.db.AddSiacoinElement(elem)
 		e.db.AddUnspentSiacoinElement(elem.Address, elem.ID)
+		e.hs.ModifyLeaf(elem.StateElement)
 	}
 	for _, elem := range cau.NewSiafundElements {
 		e.db.AddSiafundElement(elem)
 		e.db.AddUnspentSiafundElement(elem.Address, elem.ID)
+		e.hs.ModifyLeaf(elem.StateElement)
 	}
 	for _, elem := range cau.RevisedFileContracts {
 		e.db.AddFileContractElement(elem)
 		stats.TotalContractSize += elem.FileContract.Filesize
 		stats.TotalRevisionVolume += elem.FileContract.Filesize
+		e.hs.ModifyLeaf(elem.StateElement)
 	}
 	for _, elem := range cau.NewFileContracts {
 		e.db.AddFileContractElement(elem)
@@ -123,12 +137,16 @@ func (e *Explorer) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayCommit boo
 		stats.ActiveContractSize += elem.FileContract.Filesize
 		stats.TotalContractCost = stats.TotalContractCost.Add(payout)
 		stats.TotalContractSize += elem.FileContract.Filesize
+		e.hs.ModifyLeaf(elem.StateElement)
 	}
 
 	e.db.AddChainStats(cau.State.Index, stats)
 
 	e.cs, e.tipStats = cau.State, stats
 	if mayCommit {
+		if err := e.hs.Commit(); err != nil {
+			return err
+		}
 		return e.db.Commit()
 	}
 
@@ -183,9 +201,10 @@ func (e *Explorer) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
 }
 
 // NewExplorer creates a new explorer.
-func NewExplorer(cs consensus.State, store Store) *Explorer {
+func NewExplorer(cs consensus.State, store Store, hashStore HashStore) *Explorer {
 	return &Explorer{
 		cs: cs,
 		db: store,
+		hs: hashStore,
 	}
 }

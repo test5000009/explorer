@@ -1,6 +1,8 @@
 package explorer
 
 import (
+	"errors"
+
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
 )
@@ -148,4 +150,19 @@ func (e *Explorer) Transaction(id types.TransactionID) (types.Transaction, error
 // State returns the chain state for a given chain index.
 func (e *Explorer) State(index types.ChainIndex) (consensus.State, error) {
 	return e.db.State(index)
+}
+
+// MerkleProof returns the current merkle proof for a given element.
+func (e *Explorer) MerkleProof(id types.ElementID) ([]types.Hash256, error) {
+	var index uint64
+	if elem, err := e.SiacoinElement(id); err == nil {
+		index = elem.LeafIndex
+	} else if elem, err := e.SiafundElement(id); err == nil {
+		index = elem.LeafIndex
+	} else if elem, err := e.FileContractElement(id); err == nil {
+		index = elem.LeafIndex
+	} else {
+		return nil, errors.New("no such element")
+	}
+	return e.hs.MerkleProof(index)
 }
