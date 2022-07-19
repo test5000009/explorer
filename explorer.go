@@ -33,11 +33,13 @@ type Store interface {
 	AddTransaction(txn types.Transaction, addresses []types.Address, block types.ChainIndex)
 	AddState(index types.ChainIndex, context consensus.State)
 
+	Size() (uint64, error)
 	Commit() error
 }
 
 // A HashStore can read and write hashes for nodes in the log's tree structure.
 type HashStore interface {
+	Size() (uint64, error)
 	Commit() error
 	ModifyLeaf(elem types.StateElement) error
 	MerkleProof(leafIndex uint64) ([]types.Hash256, error)
@@ -161,13 +163,16 @@ func (e *Explorer) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
 	for _, elem := range cru.SpentSiacoins {
 		e.db.AddSiacoinElement(elem)
 		e.db.AddUnspentSiacoinElement(elem.Address, elem.ID)
+		e.hs.ModifyLeaf(elem.StateElement)
 	}
 	for _, elem := range cru.SpentSiafunds {
 		e.db.AddSiafundElement(elem)
 		e.db.AddUnspentSiafundElement(elem.Address, elem.ID)
+		e.hs.ModifyLeaf(elem.StateElement)
 	}
 	for _, elem := range cru.ResolvedFileContracts {
 		e.db.AddFileContractElement(elem)
+		e.hs.ModifyLeaf(elem.StateElement)
 	}
 
 	for _, elem := range cru.NewSiacoinElements {
@@ -184,6 +189,7 @@ func (e *Explorer) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
 	for _, txn := range cru.Block.Transactions {
 		for _, rev := range txn.FileContractRevisions {
 			e.db.AddFileContractElement(rev.Parent)
+			e.hs.ModifyLeaf(rev.Parent.StateElement)
 		}
 	}
 	for _, elem := range cru.NewFileContracts {

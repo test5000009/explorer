@@ -166,3 +166,16 @@ func (e *Explorer) MerkleProof(id types.ElementID) ([]types.Hash256, error) {
 	}
 	return e.hs.MerkleProof(index)
 }
+
+// Size returns the combined size in bytes of the SQL store and the hash store.
+func (e *Explorer) Size() (uint64, error) {
+	dbSize, err := e.db.Size()
+	if err != nil {
+		return 0, err
+	}
+	hsSize, err := e.hs.Size()
+	if err != nil {
+		return 0, err
+	}
+	return dbSize + hsSize, nil
+}

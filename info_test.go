@@ -101,12 +101,15 @@ func TestSiacoinElements(t *testing.T) {
 			t.Fatal("output value doesn't equal balance")
 		}
 
-		proof, err := e.MerkleProof(elem.ID)
-		if err != nil {
+		if elem.MerkleProof, err = e.MerkleProof(elem.ID); err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(proof, elem.MerkleProof) {
-			t.Fatalf("merkle proofs did not equal: got %v, expected %v", proof, elem.MerkleProof)
+
+		cs := cm.TipState()
+		if !cs.Elements.ContainsUnspentSiacoinElement(elem) {
+			t.Fatal("accumulator should have unspent output")
+		} else if cs.Elements.ContainsSpentSiacoinElement(elem) {
+			t.Fatal("accumulator should not see output as spent")
 		}
 
 		txns, err := e.Transactions(changeAddr, math.MaxInt64, 0)
@@ -179,8 +182,15 @@ func TestChainStatsSiacoins(t *testing.T) {
 		t.Fatal("chainstats don't match")
 	}
 
-	for i := 0; i < 5; i++ {
-		sendAmount := types.Siacoins(7)
+	size, err := e.Size()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Begin size: %d bytes", size)
+
+	n := 1000
+	for i := 0; i < n; i++ {
+		sendAmount := types.Siacoins(7).Div64(1000)
 		txn := types.Transaction{
 			SiacoinOutputs: []types.SiacoinOutput{{
 				Address: types.VoidAddress,
@@ -216,6 +226,12 @@ func TestChainStatsSiacoins(t *testing.T) {
 			t.Fatal("chainstats don't match")
 		}
 	}
+
+	size, err = e.Size()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("End size (after %d blocks): %d bytes (average %d bytes/block)", n, size, size/uint64(n))
 }
 
 func TestChainStatsContracts(t *testing.T) {
@@ -283,6 +299,13 @@ func TestChainStatsContracts(t *testing.T) {
 		HostPublicKey:   hostPubkey,
 	}
 	outputSum := initialRev.RenterOutput.Value.Add(initialRev.HostOutput.Value).Add(cm.TipState().FileContractTax(initialRev))
+
+	if renterOutput.MerkleProof, err = e.MerkleProof(renterOutput.ID); err != nil {
+		t.Fatal(err)
+	}
+	if hostOutput.MerkleProof, err = e.MerkleProof(hostOutput.ID); err != nil {
+		t.Fatal(err)
+	}
 	txn := types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{
 			{Parent: renterOutput, SpendPolicy: types.PolicyPublicKey(renterPubkey)},
@@ -321,5 +344,95 @@ func TestChainStatsContracts(t *testing.T) {
 	}
 	if !reflect.DeepEqual(stats, expected) {
 		t.Fatal("chainstats don't match")
+	}
+}
+
+func BenchmarkAddEmptyBlocks(b *testing.B) {
+	b.StopTimer()
+
+	sim := chainutil.NewChainSim()
+	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.State)
+
+	hs, err := explorerutil.NewHashStore(b.TempDir())
+	if err != nil {
+		b.Fatal(err)
+	}
+	explorerStore := explorerutil.NewEphemeralStore()
+	e := explorer.NewExplorer(sim.Genesis.State, explorerStore, hs)
+	if err := addGenesisElements(e, sim.Genesis.Block); err != nil {
+		b.Fatal(err)
+	}
+	cm.AddSubscriber(e, cm.Tip())
+	b.Log(b.N)
+	blocks := sim.MineBlocks(b.N)
+
+	b.StartTimer()
+	cm.AddBlocks(blocks)
+}
+
+func BenchmarkSiacoinElement(b *testing.B) {
+	b.StopTimer()
+
+	sim := chainutil.NewChainSim()
+	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.State)
+
+	hs, err := explorerutil.NewHashStore(b.TempDir())
+	if err != nil {
+		b.Fatal(err)
+	}
+	explorerStore := explorerutil.NewEphemeralStore()
+	e := explorer.NewExplorer(sim.Genesis.State, explorerStore, hs)
+	if err := addGenesisElements(e, sim.Genesis.Block); err != nil {
+		b.Fatal(err)
+	}
+	cm.AddSubscriber(e, cm.Tip())
+	au := consensus.GenesisUpdate(sim.Genesis.Block, types.Work{NumHashes: [32]byte{31: 4}})
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		id := au.NewSiacoinElements[i%10].ID
+
+		elem, err := e.SiacoinElement(id)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if elem.ID != id {
+			b.Fatal("wrong element")
+		}
+	}
+}
+
+func BenchmarkMerkleProof(b *testing.B) {
+	b.StopTimer()
+
+	sim := chainutil.NewChainSim()
+	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.State)
+
+	hs, err := explorerutil.NewHashStore(b.TempDir())
+	if err != nil {
+		b.Fatal(err)
+	}
+	explorerStore := explorerutil.NewEphemeralStore()
+	e := explorer.NewExplorer(sim.Genesis.State, explorerStore, hs)
+	if err := addGenesisElements(e, sim.Genesis.Block); err != nil {
+		b.Fatal(err)
+	}
+	cm.AddSubscriber(e, cm.Tip())
+	au := consensus.GenesisUpdate(sim.Genesis.Block, types.Work{NumHashes: [32]byte{31: 4}})
+	cm.AddBlocks(sim.MineBlocks(1000))
+	cs := cm.TipState()
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		elem := au.NewSiacoinElements[i%10]
+		if elem.MerkleProof, err = e.MerkleProof(elem.ID); err != nil {
+			b.Fatal(err)
+		}
+
+		if !cs.Elements.ContainsUnspentSiacoinElement(elem) {
+			b.Fatal("accumulator should have unspent genesis output")
+		} else if cs.Elements.ContainsSpentSiacoinElement(elem) {
+			b.Fatal("accumulator should not see genesis output as spent")
+		}
 	}
 }

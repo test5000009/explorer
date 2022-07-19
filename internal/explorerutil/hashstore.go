@@ -57,6 +57,19 @@ func (hs *HashStore) ModifyLeaf(elem types.StateElement) error {
 	return nil
 }
 
+// Size implements explorer.HashStore.
+func (hs *HashStore) Size() (uint64, error) {
+	var size uint64
+	for _, f := range hs.hashFiles {
+		stat, err := f.Stat()
+		if err != nil {
+			return 0, err
+		}
+		size += uint64(stat.Size())
+	}
+	return size, nil
+}
+
 // Commit implements explorer.HashStore.
 func (hs *HashStore) Commit() error {
 	for _, f := range hs.hashFiles {
