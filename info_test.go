@@ -347,27 +347,48 @@ func TestChainStatsContracts(t *testing.T) {
 	}
 }
 
+var genesis consensus.State
+var benchUpdates []*chain.ApplyUpdate
+
 func BenchmarkAddEmptyBlocks(b *testing.B) {
-	b.StopTimer()
+	if benchUpdates == nil {
+		// mine 1000 blocks and store the resulting updates in benchUpdates
+		sim := chainutil.NewChainSim()
+		sim.MineBlocks(1000)
 
-	sim := chainutil.NewChainSim()
-	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.State)
+		genesis = sim.Genesis.State
 
-	hs, err := explorerutil.NewHashStore(b.TempDir())
-	if err != nil {
-		b.Fatal(err)
+		sau := chain.ApplyUpdate{
+			consensus.GenesisUpdate(sim.Genesis.Block, types.Work{NumHashes: [32]byte{31: 4}}),
+			sim.Genesis.Block,
+		}
+		benchUpdates = append(benchUpdates, &sau)
+
+		cs := sim.Genesis.State
+		for _, block := range sim.Chain {
+			sau := chain.ApplyUpdate{consensus.ApplyBlock(cs, block), block}
+			benchUpdates = append(benchUpdates, &sau)
+			cs = sau.State
+		}
+
+		b.ResetTimer()
 	}
-	explorerStore := explorerutil.NewEphemeralStore()
-	e := explorer.NewExplorer(sim.Genesis.State, explorerStore, hs)
-	if err := addGenesisElements(e, sim.Genesis.Block); err != nil {
-		b.Fatal(err)
-	}
-	cm.AddSubscriber(e, cm.Tip())
-	b.Log(b.N)
-	blocks := sim.MineBlocks(b.N)
 
-	b.StartTimer()
-	cm.AddBlocks(blocks)
+	for i := 0; i < b.N/1000; i++ {
+		b.StopTimer()
+		hs, err := explorerutil.NewHashStore(b.TempDir())
+		if err != nil {
+			b.Fatal(err)
+		}
+		explorerStore := explorerutil.NewEphemeralStore()
+		e := explorer.NewExplorer(genesis, explorerStore, hs)
+		b.StartTimer()
+		for _, cau := range benchUpdates {
+			if err := e.ProcessChainApplyUpdate(cau, false); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
 }
 
 func BenchmarkSiacoinElement(b *testing.B) {
