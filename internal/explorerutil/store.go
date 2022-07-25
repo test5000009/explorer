@@ -95,6 +95,13 @@ func (s *SQLiteStore) Commit() (err error) {
 	return
 }
 
+// Size implements explorer.Store.
+func (s *SQLiteStore) Size() (uint64, error) {
+	var size uint64
+	s.txErr = s.tx.QueryRow(`SELECT (page_count - freelist_count) * page_size as size FROM pragma_page_count(), pragma_freelist_count(), pragma_page_size();`).Scan(&size)
+	return size, s.txErr
+}
+
 // SiacoinElement implements explorer.Store.
 func (s *SQLiteStore) SiacoinElement(id types.ElementID) (sce types.SiacoinElement, err error) {
 	err = s.queryRow(&sce, `SELECT data FROM elements WHERE id=? AND type=?`, encode(id), "siacoin")
@@ -190,16 +197,19 @@ func (s *SQLiteStore) State(index types.ChainIndex) (context consensus.State, er
 
 // AddSiacoinElement implements explorer.Store.
 func (s *SQLiteStore) AddSiacoinElement(sce types.SiacoinElement) {
+	sce.MerkleProof = nil
 	s.execStatement(`INSERT INTO elements(id, type, data) VALUES(?, ?, ?)`, encode(sce.ID), "siacoin", encode(sce))
 }
 
 // AddSiafundElement implements explorer.Store.
 func (s *SQLiteStore) AddSiafundElement(sfe types.SiafundElement) {
+	sfe.MerkleProof = nil
 	s.execStatement(`INSERT INTO elements(id, type, data) VALUES(?, ?, ?)`, encode(sfe.ID), "siafund", encode(sfe))
 }
 
 // AddFileContractElement implements explorer.Store.
 func (s *SQLiteStore) AddFileContractElement(fce types.FileContractElement) {
+	fce.MerkleProof = nil
 	s.execStatement(`INSERT INTO elements(id, type, data) VALUES(?, ?, ?)`, encode(fce.ID), "contract", encode(fce))
 }
 
