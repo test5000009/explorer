@@ -86,13 +86,13 @@ func (c *Client) SyncerConnect(addr string) (err error) {
 
 // ChainStats returns stats about the chain at the given index.
 func (c *Client) ChainStats(index types.ChainIndex) (resp explorer.ChainStats, err error) {
-	err = c.get(fmt.Sprintf("/api/explorer/chain/stats/%s", index.String()), &resp)
+	err = c.get(fmt.Sprintf("/api/explorer/chain/%s", index.String()), &resp)
 	return
 }
 
 // ChainState returns the validation context at a given chain index.
 func (c *Client) ChainState(index types.ChainIndex) (resp consensus.State, err error) {
-	err = c.get(fmt.Sprintf("/api/explorer/chain/state/%s", index.String()), &resp)
+	err = c.get(fmt.Sprintf("/api/explorer/chain/%s/state", index.String()), &resp)
 	return
 }
 
@@ -114,12 +114,6 @@ func (c *Client) FileContractElement(id types.ElementID) (resp types.FileContrac
 	return
 }
 
-// ChainStatsLatest returns stats about the latest block.
-func (c *Client) ChainStatsLatest() (resp explorer.ChainStats, err error) {
-	err = c.get("/api/explorer/chain/stats/latest", &resp)
-	return
-}
-
 // ElementSearch returns information about a given element.
 func (c *Client) ElementSearch(id types.ElementID) (resp ExplorerSearchResponse, err error) {
 	err = c.get(fmt.Sprintf("/api/explorer/element/search/%s", id.String()), &resp)
@@ -132,37 +126,43 @@ func (c *Client) AddressBalance(address types.Address) (resp ExplorerWalletBalan
 	if err != nil {
 		return
 	}
-	err = c.get(fmt.Sprintf("/api/explorer/address/balance/%s", string(data)), &resp)
+	err = c.get(fmt.Sprintf("/api/explorer/address/%s/balance", string(data)), &resp)
 	return
 }
 
 // SiacoinOutputs returns the unspent siacoin elements of an address.
-func (c *Client) SiacoinOutputs(address types.Address) (resp []types.SiacoinElement, err error) {
+func (c *Client) SiacoinOutputs(address types.Address) (resp []types.ElementID, err error) {
 	data, err := json.Marshal(address)
 	if err != nil {
 		return
 	}
-	err = c.get(fmt.Sprintf("/api/explorer/address/siacoins/%s", string(data)), &resp)
+	err = c.get(fmt.Sprintf("/api/explorer/address/%s/siacoins", string(data)), &resp)
 	return
 }
 
 // SiafundOutputs returns the unspent siafunds elements of an address.
-func (c *Client) SiafundOutputs(address types.Address) (resp []types.SiafundElement, err error) {
+func (c *Client) SiafundOutputs(address types.Address) (resp []types.ElementID, err error) {
 	data, err := json.Marshal(address)
 	if err != nil {
 		return
 	}
-	err = c.get(fmt.Sprintf("/api/explorer/address/siafunds/%s", string(data)), &resp)
+	err = c.get(fmt.Sprintf("/api/explorer/address/%s/siafunds", string(data)), &resp)
 	return
 }
 
 // Transactions returns the latest transaction IDs the address was involved in.
-func (c *Client) Transactions(address types.Address, amount, offset int) (resp []types.ElementID, err error) {
+func (c *Client) Transactions(address types.Address, amount, offset int) (resp []types.TransactionID, err error) {
 	data, err := json.Marshal(address)
 	if err != nil {
 		return
 	}
-	err = c.get(fmt.Sprintf("/api/explorer/address/transactions/%s?amount=%d&offset=%d", string(data), amount, offset), &resp)
+	err = c.get(fmt.Sprintf("/api/explorer/address/%s/transactions?amount=%d&offset=%d", string(data), amount, offset), &resp)
+	return
+}
+
+// Transaction returns a transaction with the given ID.
+func (c *Client) Transaction(id types.TransactionID) (resp types.Transaction, err error) {
+	err = c.get(fmt.Sprintf("/api/explorer/transaction/%s", id.String()), &resp)
 	return
 }
 
