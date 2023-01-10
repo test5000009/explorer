@@ -11,6 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
-      - uses: test5000009/action-golang-analysis
+      - uses: test5000009/action-golang-analysis@3a9dfdcf4988bd33750edb0047ef8c2b76c04966
         with:
           analyzers: "go.sia.tech/jape.Analyzer"
